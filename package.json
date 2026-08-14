@@ -1,0 +1,36 @@
+{
+  "name": "dsh-plugin-approval-alert",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 审批提醒插件：需要用户审批时在桌面右下角弹出系统级通知（显示所属工作区名称，点击跳转到对应工作区）并播放提示音。Cross-platform approval alert: native OS notification with workspace name, click-to-jump and chime.",
+  "type": "module",
+  "main": "src/client/index.js",
+  "exports": {
+    ".": "./src/client/index.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "approval",
+    "notification",
+    "alert",
+    "web-notifications",
+    "workspace"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<your-org>/dsh-plugin-approval-alert.git"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
