@@ -5,10 +5,13 @@
   "type": "module",
   "main": "src/client/index.js",
   "exports": {
-    ".": "./src/client/index.js"
+    ".": "./src/client/index.js",
+    "./client": "./src/client/index.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "src",
+    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
@@ -26,6 +29,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/doncelee229-cmyk/dsh-plugin-approval-alert.git"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
   },
   "peerDependencies": {
     "react": ">=18"

@@ -1,0 +1,5 @@
+# dsh-plugin-approval-alert bundle patch: mount the web client plugin under its
+# package name, resolved through the profile's node_modules.
+- insert:
+    - id: approval-alert
+      name: dsh-plugin-approval-alert
