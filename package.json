@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<your-org>/dsh-plugin-approval-alert.git"
+    "url": "git+https://github.com/doncelee229-cmyk/dsh-plugin-approval-alert.git"
   },
   "peerDependencies": {
     "react": ">=18"
