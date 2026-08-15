@@ -1,5 +1,7 @@
 # dsh-plugin-approval-alert
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 > DeepSeek Harness 审批提醒插件 · Approval Alert for DeepSeek Harness
 
 当 Harness 需要你审批某个操作时，在**桌面右下角（浏览器外部）**弹出系统级通知，显示**所属工作区名称**，**点击即可跳转到对应工作区**；同时播放提示音，提醒不遗漏。
