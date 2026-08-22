@@ -76,13 +76,15 @@ Notes:
 
 在 Harness 会话中通过 `cordis_define` / `cordis_run` 加载客户端插件（源码见 `src/client/index.js`），注册到 `shell.overlay` 插槽即可。
 
-### 方式二：打包安装（推荐，可持久化）
+### 方式二：npm 安装（推荐，可持久化）
 
-以 npm 包形式安装到 Harness 的插件目录，并按官方文档把插件行加入你的 `cordis.yml` 组合：
+插件已发布到 npm（包名 `dsh-plugin-approval-alert`），一条命令装进你的 profile：
 
 ```bash
-npm install dsh-plugin-approval-alert
+dsh plugin --profile web add dsh-plugin-approval-alert
 ```
+
+命令会在 profile 目录执行 pnpm 安装，并自动把声明了 `dsh.bundle` 的插件加入 profile 的 bundles 层。国内网络建议为 npm 配置 npmmirror 镜像（`npm config set registry https://registry.npmmirror.com`），无需 VPN 即可安装；直接 `npm install dsh-plugin-approval-alert` 也可以。
 
 具体接入方式请以官方文档为准：
 - [deepseek-ai/deepseek-harness — docs/user/develop/basic/publish.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)
