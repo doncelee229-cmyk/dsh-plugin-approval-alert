@@ -10,7 +10,7 @@
  *  - 通知语言随系统语言切换：简体中文 / 繁体中文 / 英文；
  *  - 点击通知：原页面存活时直接跳转到对应工作区/会话；
  *    通知点击导致浏览器新开窗口/标签页时，新页面加载后自动打开目标会话；
- *  - 通知 3 秒后自动消失；
+ *  - 通知按系统默认时长显示并自动收起（不手动关闭，保留系统通知动画）；
  *  - 同时播放提示音（首次交互自动解锁音频，规避浏览器自动播放策略）。
  *
  * 兼容性：Win10 / Win11 / Linux / macOS（Web Notifications API + Web Audio API）。
@@ -69,6 +69,12 @@ function detectLang() {
 
 export function apply(ctx) {
   const TARGET_KEY = 'dsh-aprl-target';
+  /* 新开窗口/标签页消费暂存目标的绝对时限：超过该时限的目标视为过期状态，
+   * 不再自动跳转（toast 点击流程早已结束），而是直接清除。 */
+  const TARGET_TTL_MS = 10 * 60 * 1000;
+  /* 交互解决后的暂存宽限：保持目标一小段时间，让"刚点击 toast 才新开的
+   * 窗口"仍能读到它；宽限过后（或目标更早）再清除，避免陈旧目标残留。 */
+  const TARGET_RESOLVE_GRACE_MS = 5 * 1000;
 
   /* ---- audio: unlock on first user gesture, then reuse one context ---- */
   let actx = null;
@@ -129,7 +135,7 @@ export function apply(ctx) {
   /* ---- target routing: survive both a live page click and a fresh window ---- */
   function setTarget(sessionId) {
     try {
-      localStorage.setItem(TARGET_KEY, sessionId);
+      localStorage.setItem(TARGET_KEY, JSON.stringify({ id: sessionId, ts: Date.now() }));
       sessionStorage.setItem(TARGET_KEY, '1');
     } catch (err) {
       console.log('approval alert target store failed:', err && err.message);
@@ -141,8 +147,19 @@ export function apply(ctx) {
       sessionStorage.removeItem(TARGET_KEY);
     } catch (err) {}
   }
+  /** 读取暂存目标（id + 时间戳）；缺失或损坏时返回 null。 */
+  function readTarget() {
+    try {
+      const raw = localStorage.getItem(TARGET_KEY);
+      if (raw === null || raw === '') return null;
+      const parsed = JSON.parse(raw);
+      if (parsed === null || typeof parsed !== 'object' || typeof parsed.id !== 'string' || parsed.id === '') return null;
+      return { id: parsed.id, ts: typeof parsed.ts === 'number' ? parsed.ts : null };
+    } catch (err) {
+      return null;
+    }
+  }
 
-  const sessions = ctx.get('sessions');
   function showNativeNotification(title, body, sessionId) {
     try {
       if (typeof Notification === 'undefined') return;
@@ -157,14 +174,21 @@ export function apply(ctx) {
       setTarget(sessionId);
       const n = new Notification(title, {
         body: body,
-        tag: 'dsh-approval-alert',
+        /* 按会话唯一化的 tag：不同会话同时需要审批/选择方案时各自成条，
+         * 不再互相替换（固定 tag 会把前一条挤掉并丢失其点击回调）。 */
+        tag: `dsh-approval-alert:${sessionId}`,
         silent: true
       });
       n.onclick = () => {
         try { window.focus(); } catch (err) {}
-        if (sessionId !== undefined && sessions !== undefined) {
-          try { sessions.open(sessionId); } catch (err) {
-            console.log('approval alert jump failed:', err && err.message);
+        if (sessionId !== undefined) {
+          /* 延迟解析 sessions 服务：apply() 时该服务可能尚未就绪，
+           * 点击发生时再取，避免一次性捕获为 undefined 导致永远跳不过去。 */
+          const sessions = ctx.get('sessions');
+          if (sessions !== undefined) {
+            try { sessions.open(sessionId); } catch (err) {
+              console.log('approval alert jump failed:', err && err.message);
+            }
           }
         }
         clearTarget();
@@ -194,10 +218,11 @@ export function apply(ctx) {
   }, 'approval-alert: audio');
 
   /* ---- watcher: approval & question alerts; workspace-aware; bilingual ---- */
-  function ApprovalWatcher(props) {
-    if (typeof props.useSessions !== 'function') return null;
-    const list = props.useSessions((state) => state);
-    const workspaces = typeof props.useWorkspaces === 'function' ? props.useWorkspaces((state) => state) : undefined;
+  function ApprovalWatcher({ useSessions, useWorkspaces }) {
+    /* shell.overlay 是 root 作用域插槽，框架 kit 恒提供这两个 hook，
+     * 因此无条件调用（遵守 Rules of Hooks，避免条件调用导致 React 报错）。 */
+    const list = useSessions((state) => state);
+    const workspaces = useWorkspaces((state) => state);
     const current = list.current;
     const currentItem = current !== undefined ? list.byId[current] : undefined;
     const currentStatus = currentItem !== undefined && INTERACTION_KINDS.includes(currentItem.pendingInteraction)
@@ -210,21 +235,27 @@ export function apply(ctx) {
     const pending = currentPending || other !== undefined;
     const target = currentPending ? currentItem : other;
     const targetStatus = currentPending ? currentStatus : (other !== undefined ? other.pendingInteraction : undefined);
-    const isApproval = targetStatus === 'approval';
+    const targetId = target === undefined ? undefined : target.id;
 
     // Fresh window (opened by clicking the OS toast): sessionStorage is empty,
     // so consume the stored target once the session list has it loaded.
     React.useEffect(() => {
-      let raw = null;
-      try { raw = localStorage.getItem(TARGET_KEY); } catch (err) {}
-      if (raw === null || raw === '') return;
+      const staged = readTarget();
+      if (staged === null) return;
       let freshTab = true;
       try { freshTab = sessionStorage.getItem(TARGET_KEY) === null; } catch (err) {}
       if (!freshTab) return;
-      if (list.ids.includes(raw) || list.byId[raw] !== undefined) {
+      /* 绝对时限：只消费"最近暂存"的目标（toast 点击流程），更早的一律视为
+       * 陈旧状态直接清除，避免几天后新开页面莫名跳转到旧会话。 */
+      if (staged.ts !== null && Date.now() - staged.ts > TARGET_TTL_MS) {
         clearTarget();
+        return;
+      }
+      if (list.ids.includes(staged.id) || list.byId[staged.id] !== undefined) {
+        clearTarget();
+        const sessions = ctx.get('sessions');
         if (sessions !== undefined) {
-          try { sessions.open(raw); } catch (err) {
+          try { sessions.open(staged.id); } catch (err) {
             console.log('approval alert target open failed:', err && err.message);
           }
         }
@@ -233,27 +264,40 @@ export function apply(ctx) {
       }
     }, [list]);
 
-    const prev = React.useRef(false);
+    /* 每个交互（会话 + 状态）提醒一次：目标会话切换或状态变化会再次提醒，
+     * 而同一交互不会因列表刷新的无关变化而重复弹通知。 */
+    const lastAlerted = React.useRef(null);
     React.useEffect(() => {
-      if (pending && !prev.current && target !== undefined) {
-        const lang = detectLang();
-        const s = STRINGS[lang] || STRINGS.en;
-        const workspace = workspaces === undefined
-          ? undefined
-          : workspaces.items.find((w) => w.sessionIds.includes(target.id));
-        const workspaceName = workspace === undefined ? undefined : (workspace.title || workspace.path || workspace.workspaceId);
-        const sessionName = target.displayTitle || target.title || target.id;
-        const title = isApproval ? s.approvalTitle : s.questionTitle;
-        const template = isApproval
-          ? (workspaceName !== undefined ? s.wsApproval : s.sApproval)
-          : (workspaceName !== undefined ? s.wsQuestion : s.sQuestion);
-        const body = template.replace('{n}', String(workspaceName !== undefined ? workspaceName : sessionName));
-        playChime();
-        showNativeNotification(title, body, target.id);
+      if (!pending) {
+        /* 交互解决后清除暂存目标；但对"刚暂存"的目标留一点宽限，防止
+         * 点击 toast 新开的窗口还没加载完就被这里清掉（跨窗口竞态）。 */
+        const staged = readTarget();
+        if (staged === null || staged.ts === null || Date.now() - staged.ts >= TARGET_RESOLVE_GRACE_MS) clearTarget();
+        lastAlerted.current = null;
+        return;
       }
-      if (!pending) clearTarget();
-      prev.current = pending;
-    }, [pending]);
+      if (targetId === undefined) return;
+      const key = `${targetId}:${targetStatus}`;
+      if (lastAlerted.current === key) return;
+      lastAlerted.current = key;
+
+      const lang = detectLang();
+      const s = STRINGS[lang] || STRINGS.en;
+      const workspace = workspaces === undefined
+        ? undefined
+        : workspaces.items.find((w) => w.sessionIds.includes(targetId));
+      const workspaceName = workspace === undefined ? undefined : (workspace.title || workspace.path || workspace.workspaceId);
+      const sessionName = target.displayTitle || target.title || targetId;
+      const isApproval = targetStatus === 'approval';
+      const title = isApproval ? s.approvalTitle : s.questionTitle;
+      const template = isApproval
+        ? (workspaceName !== undefined ? s.wsApproval : s.sApproval)
+        : (workspaceName !== undefined ? s.wsQuestion : s.sQuestion);
+      const body = template.replace('{n}', String(workspaceName !== undefined ? workspaceName : sessionName));
+      playChime();
+      showNativeNotification(title, body, targetId);
+    }, [pending, targetId, targetStatus]);
+
     return null;
   }
 

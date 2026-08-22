@@ -62,7 +62,7 @@ Notes:
 
 1. Install the plugin (see below).
 2. **Click anywhere in the page once** on first use — the plugin asks for notification permission and unlocks audio on that gesture.
-3. Every approval request then raises an OS toast (workspace name, ~3s auto-dismiss) plus a chime; **click the toast to jump** to the workspace.
+3. Every approval request then raises an OS toast (workspace name, OS default duration) plus a chime; **click the toast to jump** to the workspace.
 4. The actual Allow-once / Reject decision stays on the in-browser approval card.
 
 > 提示：若系统未弹出通知，请检查浏览器站点权限中的"通知"是否已允许。
